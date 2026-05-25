@@ -10,6 +10,7 @@
 - [Poetry](#poetry)
 - [Git & GitHub](#git--github)
 - [Docker](#docker)
+- [JWT (JSON Web Token)](#jwt-json-web-token)
 
 ---
 
@@ -254,6 +255,98 @@ docker volume prune                   # unused volumes
 ```
 
 ---
+
+## JWT (JSON Web Token)
+
+### Structure
+
+A JWT token consists of three Base64-encoded parts separated by dots:
+
+```
+HEADER.PAYLOAD.SIGNATURE
+```
+
+Decode any token at https://jwt.io
+
+**Header** — algorithm used to sign the token:
+```json
+{ "alg": "HS256", "typ": "JWT" }
+```
+
+**Payload (Claims)** — data stored in the token. Publicly readable — never store sensitive data like passwords here:
+```json
+{
+  "sub": "maciej@example.com",
+  "iat": 1716000000,
+  "exp": 1716086400
+}
+```
+
+**Signature** — guarantees the token wasn't tampered with:
+```
+HMACSHA256(base64(header) + "." + base64(payload), secret)
+```
+
+---
+
+### Auth flow
+
+```
+POST /api/auth/login { email, password }
+  → server verifies credentials → generates JWT
+  → client stores token
+
+GET /api/tasks
+  Authorization: Bearer eyJhbGc...
+  → server verifies signature → extracts email → handles request
+```
+
+---
+
+### JJWT 0.12.x (Java)
+
+Dependencies (`build.gradle.kts`):
+```kotlin
+implementation("io.jsonwebtoken:jjwt-api:0.12.6")
+runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")
+runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.6")
+```
+
+Build a signing key from a string secret:
+```java
+SecretKey key = Keys.hmacShaKeyFor(secret.getBytes());
+```
+
+Generate a token:
+```java
+String token = Jwts.builder()
+    .subject("maciej@example.com")
+    .issuedAt(new Date())
+    .expiration(new Date(System.currentTimeMillis() + 86400000)) // 24h
+    .signWith(key)
+    .compact();
+```
+
+Parse and verify a token:
+```java
+Claims claims = Jwts.parser()
+    .verifyWith(key)
+    .build()
+    .parseSignedClaims(token)
+    .getPayload();
+
+String email = claims.getSubject();
+```
+
+> Exceptions thrown on invalid tokens: `ExpiredJwtException`, `MalformedJwtException`, `SignatureException`.
+
+Store the secret as an environment variable, never hardcode it:
+```yaml
+# application.yml
+jwt:
+  secret: ${JWT_SECRET:local-dev-secret-change-in-production}
+  expiration: 86400000
+```
 
 <!-- ======================================================
      ADD NEW SECTIONS BELOW THIS LINE
